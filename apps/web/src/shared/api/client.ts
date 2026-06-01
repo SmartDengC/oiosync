@@ -24,8 +24,71 @@ import {
   voiceOptionSchema
 } from "@oio/contracts";
 
+function getApiBaseUrl(): string {
+  return (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+}
+
+export function resolveApiPath(path: string): string {
+  const apiBaseUrl = getApiBaseUrl();
+
+  if (apiBaseUrl === "") {
+    return path;
+  }
+
+  return path.startsWith("/") ? `${apiBaseUrl}${path}` : `${apiBaseUrl}/${path}`;
+}
+
+export function resolveAssetUrl(pathOrUrl: string | null | undefined): string | null | undefined {
+  const apiBaseUrl = getApiBaseUrl();
+
+  if (!pathOrUrl || apiBaseUrl === "") {
+    return pathOrUrl;
+  }
+
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    return pathOrUrl;
+  }
+
+  return new URL(pathOrUrl, `${apiBaseUrl}/`).toString();
+}
+
+function normalizeAudioRecord(record: AudioRecord): AudioRecord {
+  return {
+    ...record,
+    audioUrl: resolveAssetUrl(record.audioUrl) ?? null
+  };
+}
+
+function normalizeGenerationTask(task: GenerationTask): GenerationTask {
+  return {
+    ...task,
+    audioUrl: resolveAssetUrl(task.audioUrl) ?? null
+  };
+}
+
+function normalizeAudioListResponse(payload: AudioListResponse): AudioListResponse {
+  return {
+    ...payload,
+    records: payload.records.map(normalizeAudioRecord)
+  };
+}
+
+function normalizeDownloadAudioResponse(payload: DownloadAudioResponse): DownloadAudioResponse {
+  return {
+    ...payload,
+    url: resolveAssetUrl(payload.url) ?? payload.url
+  };
+}
+
+function normalizePracticePayload(payload: PracticePayload): PracticePayload {
+  return {
+    ...payload,
+    audio: normalizeAudioRecord(payload.audio)
+  };
+}
+
 async function requestJson<T>(input: string, init: RequestInit, parse: (data: unknown) => T): Promise<T> {
-  const response = await fetch(input, {
+  const response = await fetch(resolveApiPath(input), {
     headers: {
       "Content-Type": "application/json"
     },
@@ -47,12 +110,12 @@ export const apiClient = {
     return requestJson(
       API_PATHS.generations,
       { method: "POST", body: JSON.stringify(payload) },
-      (data) => generationTaskSchema.parse(data)
+      (data) => normalizeGenerationTask(generationTaskSchema.parse(data))
     );
   },
   async getGeneration(taskId: string): Promise<GenerationTask> {
     return requestJson(`${API_PATHS.generations}/${taskId}`, { method: "GET" }, (data) =>
-      generationTaskSchema.parse(data)
+      normalizeGenerationTask(generationTaskSchema.parse(data))
     );
   },
   async getModelStatus(): Promise<ModelInstallStatus> {
@@ -68,26 +131,28 @@ export const apiClient = {
     return requestJson(
       `${API_PATHS.audios}?year=${year}&month=${month}`,
       { method: "GET" },
-      (data) => audioListResponseSchema.parse(data)
+      (data) => normalizeAudioListResponse(audioListResponseSchema.parse(data))
     );
   },
   async getAudio(audioId: string): Promise<AudioRecord> {
-    return requestJson(`${API_PATHS.audios}/${audioId}`, { method: "GET" }, (data) => audioRecordSchema.parse(data));
+    return requestJson(`${API_PATHS.audios}/${audioId}`, { method: "GET" }, (data) =>
+      normalizeAudioRecord(audioRecordSchema.parse(data))
+    );
   },
   async importAudio(payload: ImportAudioRequest): Promise<AudioRecord> {
     return requestJson(
       `${API_PATHS.audios}/import`,
       { method: "POST", body: JSON.stringify(payload) },
-      (data) => audioRecordSchema.parse(data)
+      (data) => normalizeAudioRecord(audioRecordSchema.parse(data))
     );
   },
   async downloadAudio(audioId: string): Promise<DownloadAudioResponse> {
     return requestJson(`${API_PATHS.audios}/${audioId}/download`, { method: "GET" }, (data) =>
-      downloadAudioResponseSchema.parse(data)
+      normalizeDownloadAudioResponse(downloadAudioResponseSchema.parse(data))
     );
   },
   async deleteAudio(audioId: string): Promise<void> {
-    const response = await fetch(`${API_PATHS.audios}/${audioId}`, { method: "DELETE" });
+    const response = await fetch(resolveApiPath(`${API_PATHS.audios}/${audioId}`), { method: "DELETE" });
 
     if (!response.ok) {
       throw new Error(`Delete failed: ${response.status}`);
@@ -95,7 +160,7 @@ export const apiClient = {
   },
   async getPractice(audioId: string): Promise<PracticePayload> {
     return requestJson(`${API_PATHS.practice}/${audioId}`, { method: "GET" }, (data) =>
-      practicePayloadSchema.parse(data)
+      normalizePracticePayload(practicePayloadSchema.parse(data))
     );
   },
   async createBlanks(audioId: string, payload: CreateBlankExerciseRequest = {}): Promise<BlankExercise> {
