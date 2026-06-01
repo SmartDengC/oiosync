@@ -490,6 +490,12 @@ button {
   box-shadow: 0 14px 28px rgba(75, 115, 255, 0.24);
 }
 
+.play-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .practice-player__timeline {
   display: grid;
   gap: 10px;

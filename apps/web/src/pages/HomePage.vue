@@ -27,13 +27,18 @@ onMounted(async () => {
 });
 
 async function handleOpenPractice(audioId: string) {
-  appStore.setCurrentAudio(audioId);
-  await practiceStore.load(audioId);
-  await nextTick();
-  practiceSectionRef.value?.scrollIntoView({
-    behavior: "smooth",
-    block: "start"
-  });
+  try {
+    appStore.setCurrentAudio(audioId);
+    await practiceStore.load(audioId);
+    await nextTick();
+    practiceSectionRef.value?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  } catch {
+    appStore.setCurrentAudio(null);
+    appStore.pushNotice("当前记录没有真实音频，请重新生成。");
+  }
 }
 </script>
 

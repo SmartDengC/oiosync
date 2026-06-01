@@ -22,6 +22,15 @@ export const usePracticeStore = defineStore("practice", () => {
   const activeSentence = computed(() => payload.value?.audio.sentences[currentSentenceIndex.value] ?? null);
 
   async function load(audioId: string) {
+    payload.value = null;
+    blankExercise.value = null;
+    mode.value = "subtitle";
+    currentSentenceIndex.value = 0;
+    answers.value = {};
+    result.value = null;
+    currentSeconds.value = 0;
+    isPlaying.value = false;
+
     payload.value = await apiClient.getPractice(audioId);
     blankExercise.value = payload.value.recommendedExercise;
     mode.value = "subtitle";

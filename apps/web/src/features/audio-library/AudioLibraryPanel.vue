@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from "vue";
+import type { AudioRecord } from "@oio/contracts";
 
 import PanelCard from "../../shared/ui/PanelCard.vue";
 import { useAppStore } from "../../stores/app";
@@ -46,6 +47,10 @@ async function handleDownload(audioId: string) {
   const download = await libraryStore.downloadRecord(audioId);
   appStore.pushNotice(`已准备下载 ${download.filename}`);
 }
+
+function isRecordAvailable(record: AudioRecord) {
+  return record.status === "ready" && Boolean(record.audioUrl);
+}
 </script>
 
 <template>
@@ -91,10 +96,11 @@ async function handleDownload(audioId: string) {
             <h3>{{ record.title }}</h3>
             <p>{{ record.summary }}</p>
             <p v-if="record.status === 'processing'" class="record-card__status">正在生成音频与字幕...</p>
+            <p v-else-if="!record.audioUrl" class="record-card__status">无真实音频，请重新生成。</p>
           </div>
           <div class="record-card__actions">
-            <button class="record-link" :disabled="record.status !== 'ready'" @click="openPractice(record.id)">载入</button>
-            <button class="record-link" :disabled="record.status !== 'ready'" @click="handleDownload(record.id)">下载</button>
+            <button class="record-link" :disabled="!isRecordAvailable(record)" @click="openPractice(record.id)">载入</button>
+            <button class="record-link" :disabled="!isRecordAvailable(record)" @click="handleDownload(record.id)">下载</button>
             <button class="record-link record-link--danger" @click="handleDelete(record.id)">删除</button>
           </div>
         </article>

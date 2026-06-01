@@ -212,6 +212,32 @@ describe("mock api", () => {
     expect(failedTask.errorMessage).toContain("provider timeout");
   });
 
+  it("marks generation tasks as failed when no real audio is produced", async () => {
+    const app = createApp();
+    const postGeneration = getRouteHandler(app, "post", "/api/generations");
+    const getGeneration = getRouteHandler(app, "get", "/api/generations/:id");
+
+    const createResponse = createMockResponse();
+    await postGeneration(
+      {
+        body: {
+          text: "This request has no TTS output.",
+          voiceId: "Mia"
+        }
+      },
+      createResponse
+    );
+
+    await delay(20);
+
+    const failedResponse = createMockResponse();
+    await getGeneration({ params: { id: (createResponse.body as { id: string }).id } }, failedResponse);
+    const failedTask = failedResponse.body as { status: string; errorMessage?: string };
+
+    expect(failedTask.status).toBe("failed");
+    expect(failedTask.errorMessage).toBe("未生成真实音频，请检查 TTS 配置或重试");
+  });
+
   it("supports model transitions and audio lifecycle helpers", () => {
     resetModelCache();
     expect(modelStatus.installed).toBe(false);
@@ -219,11 +245,20 @@ describe("mock api", () => {
     installModel();
     expect(modelStatus.installed).toBe(true);
 
-    const task = createGeneratedAudio("This is another generated sample.", "Milo");
+    const task = createGeneratedAudio("This is another generated sample.", "Milo", {
+      audioUrl: "/generated-audio/sample.wav"
+    });
     const audioId = task.audioId ?? "";
     const exercise = createExercise(audioId);
     expect(exercise?.tokens.length).toBeGreaterThan(0);
     expect(getPractice(audioId)?.audio.status).toBe("ready");
     expect(removeAudio(audioId)).toBe(true);
+  });
+
+  it("does not expose practice payloads for ready records without a real audio url", () => {
+    const task = createGeneratedAudio("This sample has no exported audio file.", "Milo");
+    const audioId = task.audioId ?? "";
+
+    expect(getPractice(audioId)).toBeUndefined();
   });
 });

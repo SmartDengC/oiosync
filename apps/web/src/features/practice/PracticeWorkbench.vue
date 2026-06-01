@@ -9,8 +9,6 @@ const practiceStore = usePracticeStore();
 const audioRef = ref<HTMLAudioElement | null>(null);
 const audioError = ref("");
 
-let timer: number | undefined;
-
 const modes = [
   { id: "subtitle", label: "字幕" },
   { id: "dictation", label: "听写" },
@@ -27,6 +25,9 @@ const playbackProgress = computed(() => {
 });
 
 const hasRealAudio = computed(() => Boolean(practiceStore.payload?.audio.audioUrl));
+const missingAudioMessage = computed(() =>
+  practiceStore.payload && !hasRealAudio.value ? "当前记录没有真实音频，请重新生成。" : ""
+);
 
 const fillRows = computed(() => {
   if (!practiceStore.payload || !practiceStore.blankExercise) {
@@ -66,35 +67,6 @@ function buildFillParts(sentence: SentenceSegment) {
   });
 }
 
-function stepPlayback() {
-  const nextSeconds = practiceStore.currentSeconds + 0.5 * practiceStore.speed;
-  const sentenceEnd = practiceStore.activeSentence ? practiceStore.activeSentence.endMs / 1000 : Infinity;
-  const sentenceStart = practiceStore.activeSentence ? practiceStore.activeSentence.startMs / 1000 : 0;
-
-  if (practiceStore.sentenceLoop && nextSeconds >= sentenceEnd) {
-    practiceStore.setCurrentSeconds(sentenceStart);
-    practiceStore.syncCurrentSentenceBySeconds(sentenceStart);
-    return;
-  }
-
-  if (nextSeconds >= practiceStore.totalDuration) {
-    if (practiceStore.audioLoop) {
-      practiceStore.setCurrentSeconds(0);
-      practiceStore.syncCurrentSentenceBySeconds(0);
-      return;
-    }
-
-    practiceStore.setCurrentSeconds(practiceStore.totalDuration);
-    if (practiceStore.isPlaying) {
-      practiceStore.togglePlay();
-    }
-    return;
-  }
-
-  practiceStore.setCurrentSeconds(nextSeconds);
-  practiceStore.syncCurrentSentenceBySeconds(nextSeconds);
-}
-
 function syncAudioTime(nextSeconds: number) {
   const audio = audioRef.value;
 
@@ -106,31 +78,30 @@ function syncAudioTime(nextSeconds: number) {
 async function handlePlayToggle() {
   const audio = audioRef.value;
 
-  if (hasRealAudio.value && audio) {
-    audioError.value = "";
-
-    if (practiceStore.isPlaying) {
-      audio.pause();
-      practiceStore.togglePlay();
-      return;
-    }
-
-    audio.playbackRate = practiceStore.speed;
-
-    try {
-      await audio.play();
-      if (!practiceStore.isPlaying) {
-        practiceStore.togglePlay();
-      }
-    } catch (error) {
-      audioError.value = "音频资源加载失败，请先确认后端服务已启动且音频文件可访问。";
-      console.error("Audio playback failed", error);
-    }
-
+  if (!hasRealAudio.value || !audio) {
+    audioError.value = "当前记录没有真实音频，请重新生成。";
     return;
   }
 
-  practiceStore.togglePlay();
+  audioError.value = "";
+
+  if (practiceStore.isPlaying) {
+    audio.pause();
+    practiceStore.togglePlay();
+    return;
+  }
+
+  audio.playbackRate = practiceStore.speed;
+
+  try {
+    await audio.play();
+    if (!practiceStore.isPlaying) {
+      practiceStore.togglePlay();
+    }
+  } catch (error) {
+    audioError.value = "音频资源加载失败，请先确认后端服务已启动且音频文件可访问。";
+    console.error("Audio playback failed", error);
+  }
 }
 
 function handleTimelineInput(event: Event) {
@@ -195,24 +166,6 @@ function handleAudioError() {
 }
 
 watch(
-  () => practiceStore.isPlaying,
-  (isPlaying) => {
-    window.clearInterval(timer);
-
-    if (hasRealAudio.value) {
-      return;
-    }
-
-    if (!isPlaying) {
-      timer = undefined;
-      return;
-    }
-
-    timer = window.setInterval(stepPlayback, 500);
-  }
-);
-
-watch(
   () => practiceStore.speed,
   (speed) => {
     if (audioRef.value) {
@@ -233,7 +186,6 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  window.clearInterval(timer);
   audioRef.value?.pause();
 });
 </script>
@@ -251,7 +203,7 @@ onBeforeUnmount(() => {
         @timeupdate="handleAudioTimeUpdate"
       />
       <div class="practice-player">
-        <button class="play-button" @click="handlePlayToggle">
+        <button class="play-button" :disabled="!hasRealAudio" @click="handlePlayToggle">
           {{ practiceStore.isPlaying ? "❚❚" : "▶" }}
         </button>
         <div class="practice-player__timeline">
@@ -290,7 +242,9 @@ onBeforeUnmount(() => {
         <button class="button button--ghost" @click="handlePreviousSentence">上一句</button>
         <button class="button button--ghost" @click="handleNextSentence">下一句</button>
       </div>
-      <p v-if="audioError" class="fill-blanks-result">{{ audioError }}</p>
+      <p v-if="audioError || missingAudioMessage" class="fill-blanks-result">
+        {{ audioError || missingAudioMessage }}
+      </p>
 
       <div class="practice-modes">
         <span class="practice-modes__label">模式</span>

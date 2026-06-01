@@ -57,19 +57,18 @@ export function createApp() {
         updateGenerationProgress(taskId, completedSentences);
       });
 
-      let audioUrl: string | null = null;
-      let sentenceSegments = createSentenceSegments(sentenceTexts);
-
-      if (audioSegments) {
-        const combinedAudio = concatWavFiles(audioSegments);
-        await ensureAudioStorage();
-        const saved = await saveAudioFile(audioId, combinedAudio.audioBytes, "wav");
-        audioUrl = saved.publicUrl;
-        sentenceSegments = createSentenceSegments(sentenceTexts, combinedAudio.durationsMs);
+      if (!audioSegments) {
+        failGenerationTask(taskId, "未生成真实音频，请检查 TTS 配置或重试");
+        return;
       }
 
+      const combinedAudio = concatWavFiles(audioSegments);
+      await ensureAudioStorage();
+      const saved = await saveAudioFile(audioId, combinedAudio.audioBytes, "wav");
+      const sentenceSegments = createSentenceSegments(sentenceTexts, combinedAudio.durationsMs);
+
       completeGenerationTask(taskId, {
-        audioUrl,
+        audioUrl: saved.publicUrl,
         sentences: sentenceSegments
       });
     } catch (error) {

@@ -107,4 +107,39 @@ describe("PracticeWorkbench", () => {
     await wrapper.get('[data-testid="check-blanks"]').trigger("click");
     expect(store.checkAnswers).toHaveBeenCalledTimes(1);
   });
+
+  it("disables playback when no real audio is available", async () => {
+    const wrapper = mount(PracticeWorkbench, {
+      global: {
+        plugins: [
+          createTestingPinia({
+            createSpy: vi.fn,
+            initialState: {
+              practice: {
+                payload,
+                blankExercise: payload.recommendedExercise,
+                mode: "subtitle",
+                currentSentenceIndex: 0,
+                answers: {},
+                result: null,
+                isPlaying: false,
+                speed: 1,
+                sentenceLoop: true,
+                audioLoop: false,
+                currentSeconds: 0
+              }
+            }
+          })
+        ]
+      }
+    });
+
+    const store = usePracticeStore();
+    const playButton = wrapper.get("button.play-button");
+
+    expect(playButton.attributes("disabled")).toBeDefined();
+    await playButton.trigger("click");
+    expect(store.togglePlay).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("当前记录没有真实音频，请重新生成。");
+  });
 });

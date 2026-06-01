@@ -328,7 +328,7 @@ export function failGenerationTask(taskId: string, errorMessage: string) {
 export function getPractice(audioId: string) {
   const audio = getAudio(audioId);
 
-  if (!audio || audio.status !== "ready") {
+  if (!audio || audio.status !== "ready" || !audio.audioUrl) {
     return undefined;
   }
 
