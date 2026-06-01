@@ -1,0 +1,14 @@
+.git
+.DS_Store
+node_modules
+.pnpm-store
+dist
+coverage
+apps/web/dist
+apps/mock-api/dist
+apps/mock-api/generated-audio
+*.log
+.env
+.env.local
+apps/mock-api/.env
+

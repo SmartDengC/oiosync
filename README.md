@@ -32,3 +32,7 @@ Notes:
 - The frontend practice player will use real audio when `audioUrl` is available, otherwise it keeps using the simulated playback flow
 - This integration uses Xiaomi MiMo `mimo-v2.5-tts` via `https://api.xiaomimimo.com/v1/chat/completions`
 - The voice dropdown now uses the official preset English voices `Mia`, `Chloe`, `Milo`, and `Dean`
+
+## Deployment
+
+- Ubuntu + Docker deployment guide: [docs/ubuntu-docker-deploy.md](docs/ubuntu-docker-deploy.md)
