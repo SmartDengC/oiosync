@@ -39,5 +39,6 @@ Notes:
 
 ### Vercel frontend + HTTP backend proxy
 
-- `vercel.json` proxies `/api/*`, `/generated-audio/*`, `/mock-downloads/*`, and `/health` to the external backend mounted under `/oiosync/*`
+- When Vercel Root Directory is `apps/web`, place the proxy config at `apps/web/vercel.json`
+- `apps/web/vercel.json` proxies `/api/*`, `/generated-audio/*`, `/mock-downloads/*`, and `/health` to the external backend mounted under `/oiosync/*`
 - When using this Vercel proxy setup, do not set `VITE_API_BASE_URL` in Vercel project settings; leave it empty so the frontend keeps requesting same-origin paths
