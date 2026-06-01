@@ -2,6 +2,22 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "http://132.232.242.223/oiosync/api/:path*"
+    },
+    {
+      "source": "/generated-audio/:path*",
+      "destination": "http://132.232.242.223/oiosync/generated-audio/:path*"
+    },
+    {
+      "source": "/mock-downloads/:path*",
+      "destination": "http://132.232.242.223/oiosync/mock-downloads/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "http://132.232.242.223/oiosync/health"
+    },
+    {
       "source": "/((?!.*\\.).*)",
       "destination": "/"
     }

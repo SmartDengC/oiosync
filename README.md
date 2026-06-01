@@ -36,3 +36,8 @@ Notes:
 ## Deployment
 
 - Ubuntu + Docker deployment guide: [docs/ubuntu-docker-deploy.md](docs/ubuntu-docker-deploy.md)
+
+### Vercel frontend + HTTP backend proxy
+
+- `vercel.json` proxies `/api/*`, `/generated-audio/*`, `/mock-downloads/*`, and `/health` to the external backend mounted under `/oiosync/*`
+- When using this Vercel proxy setup, do not set `VITE_API_BASE_URL` in Vercel project settings; leave it empty so the frontend keeps requesting same-origin paths
