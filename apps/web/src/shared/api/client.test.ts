@@ -67,6 +67,15 @@ describe("api client url resolution", () => {
     expect(resolveAssetUrl("https://cdn.example.com/audio-1.wav")).toBe("https://cdn.example.com/audio-1.wav");
   });
 
+  it("keeps a configured path prefix for api and asset paths", () => {
+    vi.stubEnv("VITE_API_BASE_URL", "http://132.232.242.223/oiosync/");
+
+    expect(resolveApiPath("/api/voices")).toBe("http://132.232.242.223/oiosync/api/voices");
+    expect(resolveAssetUrl("/generated-audio/audio-1.wav")).toBe(
+      "http://132.232.242.223/oiosync/generated-audio/audio-1.wav"
+    );
+  });
+
   it("normalizes practice audio urls against the configured api origin", async () => {
     vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
     vi.mocked(fetch).mockResolvedValue({
@@ -100,5 +109,21 @@ describe("api client url resolution", () => {
       expect.objectContaining({ method: "GET" })
     );
     expect(download.url).toBe("https://api.example.com/mock-downloads/audio-1.wav");
+  });
+
+  it("normalizes practice audio urls against a configured path prefix", async () => {
+    vi.stubEnv("VITE_API_BASE_URL", "http://132.232.242.223/oiosync");
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => practicePayload
+    } as Response);
+
+    const payload = await apiClient.getPractice("audio-1");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://132.232.242.223/oiosync/api/practice/audio-1",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(payload.audio.audioUrl).toBe("http://132.232.242.223/oiosync/generated-audio/audio-1.wav");
   });
 });

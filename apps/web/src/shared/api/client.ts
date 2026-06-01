@@ -28,6 +28,17 @@ function getApiBaseUrl(): string {
   return (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
 }
 
+function getApiBasePath(): string {
+  const apiBaseUrl = getApiBaseUrl();
+
+  if (apiBaseUrl === "") {
+    return "";
+  }
+
+  const parsed = new URL(apiBaseUrl);
+  return parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/+$/, "");
+}
+
 export function resolveApiPath(path: string): string {
   const apiBaseUrl = getApiBaseUrl();
 
@@ -40,6 +51,7 @@ export function resolveApiPath(path: string): string {
 
 export function resolveAssetUrl(pathOrUrl: string | null | undefined): string | null | undefined {
   const apiBaseUrl = getApiBaseUrl();
+  const apiBasePath = getApiBasePath();
 
   if (!pathOrUrl || apiBaseUrl === "") {
     return pathOrUrl;
@@ -49,7 +61,8 @@ export function resolveAssetUrl(pathOrUrl: string | null | undefined): string | 
     return pathOrUrl;
   }
 
-  return new URL(pathOrUrl, `${apiBaseUrl}/`).toString();
+  const normalizedPath = pathOrUrl.startsWith("/") ? `${apiBasePath}${pathOrUrl}` : pathOrUrl;
+  return new URL(normalizedPath, `${apiBaseUrl}/`).toString();
 }
 
 function normalizeAudioRecord(record: AudioRecord): AudioRecord {
