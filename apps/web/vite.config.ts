@@ -1,13 +1,16 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 
+const apiPort = Number(process.env.API_PORT ?? 3001);
+const apiOrigin = `http://localhost:${apiPort}`;
+
 export default defineConfig({
   plugins: [vue()],
   server: {
     proxy: {
-      "/api": "http://localhost:3001",
-      "/generated-audio": "http://localhost:3001",
-      "/mock-downloads": "http://localhost:3001"
+      "/api": apiOrigin,
+      "/generated-audio": apiOrigin,
+      "/mock-downloads": apiOrigin
     }
   },
   test: {

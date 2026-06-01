@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isTtsEnabled, synthesizeSpeech } from "./tts";
+import { isTtsEnabled, synthesizeSpeech, synthesizeSpeechSegments } from "./tts";
 
 describe("tts provider", () => {
   afterEach(() => {
@@ -11,7 +11,7 @@ describe("tts provider", () => {
 
   it("falls back when no MiMo api key is configured", async () => {
     expect(isTtsEnabled()).toBe(false);
-    await expect(synthesizeSpeech("hello", "heart")).resolves.toBeNull();
+    await expect(synthesizeSpeech("hello", "Mia")).resolves.toBeNull();
   });
 
   it("calls MiMo TTS with expected request shape and decodes base64 audio", async () => {
@@ -31,7 +31,7 @@ describe("tts provider", () => {
       })
     } as Response);
 
-    const audioBytes = await synthesizeSpeech("Hello world", "brook");
+    const audioBytes = await synthesizeSpeech("Hello world", "Chloe");
     expect(audioBytes).toBeInstanceOf(Uint8Array);
     expect(Buffer.from(audioBytes ?? []).toString("utf8")).toBe("RIFFTEST");
 
@@ -45,16 +45,40 @@ describe("tts provider", () => {
     });
 
     const body = JSON.parse(String(init?.body));
-    expect(body.model).toBe("mimo-v2-tts");
+    expect(body.model).toBe("mimo-v2.5-tts");
     expect(body.audio).toEqual({
       format: "wav",
-      voice: "default_en"
+      voice: "Chloe"
     });
     expect(body.messages).toEqual([
       {
         role: "assistant",
-        content: "<style>Steady Natural</style>Hello world"
+        content: "Hello world"
       }
     ]);
+  });
+
+  it("synthesizes one audio segment per sentence for sentence-accurate looping", async () => {
+    process.env.MIMO_API_KEY = "test-key";
+    const progressSpy = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              audio: {
+                data: Buffer.from("RIFFTEST", "utf8").toString("base64")
+              }
+            }
+          }
+        ]
+      })
+    } as Response);
+
+    const segments = await synthesizeSpeechSegments(["First.", "Second."], "Mia", progressSpy);
+    expect(segments).toHaveLength(2);
+    expect(progressSpy).toHaveBeenNthCalledWith(1, 1, 2);
+    expect(progressSpy).toHaveBeenNthCalledWith(2, 2, 2);
   });
 });

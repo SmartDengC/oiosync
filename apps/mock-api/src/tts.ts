@@ -1,6 +1,5 @@
 type TtsProviderVoice = {
   mimoVoice: string;
-  stylePrefix: string;
 };
 
 type MimoTtsResponse = {
@@ -14,17 +13,17 @@ type MimoTtsResponse = {
 };
 
 const voiceMap: Record<string, TtsProviderVoice> = {
-  heart: {
-    mimoVoice: "default_en",
-    stylePrefix: "<style>Warm Calm</style>"
+  Mia: {
+    mimoVoice: "Mia"
   },
-  brook: {
-    mimoVoice: "default_en",
-    stylePrefix: "<style>Steady Natural</style>"
+  Chloe: {
+    mimoVoice: "Chloe"
   },
-  halo: {
-    mimoVoice: "default_en",
-    stylePrefix: "<style>Clear Balanced</style>"
+  Milo: {
+    mimoVoice: "Milo"
+  },
+  Dean: {
+    mimoVoice: "Dean"
   }
 };
 
@@ -32,14 +31,14 @@ export function isTtsEnabled() {
   return Boolean(process.env.MIMO_API_KEY);
 }
 
-export async function synthesizeSpeech(input: string, voiceId: string) {
+async function requestSpeechSegment(input: string, voiceId: string) {
   const apiKey = process.env.MIMO_API_KEY;
 
   if (!apiKey) {
     return null;
   }
 
-  const providerVoice = voiceMap[voiceId] ?? voiceMap.heart;
+  const providerVoice = voiceMap[voiceId] ?? voiceMap.Mia;
   const response = await fetch("https://api.xiaomimimo.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -47,11 +46,11 @@ export async function synthesizeSpeech(input: string, voiceId: string) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: process.env.MIMO_TTS_MODEL ?? "mimo-v2-tts",
+      model: process.env.MIMO_TTS_MODEL ?? "mimo-v2.5-tts",
       messages: [
         {
           role: "assistant",
-          content: `${providerVoice.stylePrefix}${input}`
+          content: input
         }
       ],
       audio: {
@@ -74,4 +73,32 @@ export async function synthesizeSpeech(input: string, voiceId: string) {
   }
 
   return Uint8Array.from(Buffer.from(encodedAudio, "base64"));
+}
+
+export async function synthesizeSpeech(input: string, voiceId: string) {
+  return requestSpeechSegment(input, voiceId);
+}
+
+export async function synthesizeSpeechSegments(
+  sentences: string[],
+  voiceId: string,
+  onProgress?: (completedSentences: number, totalSentences: number) => void
+) {
+  const apiKey = process.env.MIMO_API_KEY;
+
+  if (!apiKey) {
+    return null;
+  }
+
+  const outputs: Uint8Array[] = [];
+  for (const [index, sentence] of sentences.entries()) {
+    const audioBytes = await requestSpeechSegment(sentence, voiceId);
+    if (!audioBytes) {
+      return null;
+    }
+    outputs.push(audioBytes);
+    onProgress?.(index + 1, sentences.length);
+  }
+
+  return outputs;
 }

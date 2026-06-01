@@ -38,10 +38,6 @@ async function openPractice(audioId: string) {
   emit("openPractice", audioId);
 }
 
-async function handleImport() {
-  await libraryStore.importSample();
-}
-
 async function handleDelete(audioId: string) {
   await libraryStore.deleteRecord(audioId);
 }
@@ -63,7 +59,6 @@ async function handleDownload(audioId: string) {
         </div>
         <div class="library-panel__actions">
           <button class="button button--ghost" @click="libraryStore.selectDay(null)">本月</button>
-          <button class="button button--primary" @click="handleImport">导入示例</button>
         </div>
       </div>
 
@@ -88,14 +83,18 @@ async function handleDownload(audioId: string) {
       </div>
 
       <div class="library-panel__records">
+        <p v-if="libraryStore.filteredRecords.length === 0" class="library-panel__empty">
+          暂无真实音频记录。先在上方输入文本生成音频，生成后会展示在这里。
+        </p>
         <article v-for="record in libraryStore.filteredRecords" :key="record.id" class="record-card">
           <div>
             <h3>{{ record.title }}</h3>
             <p>{{ record.summary }}</p>
+            <p v-if="record.status === 'processing'" class="record-card__status">正在生成音频与字幕...</p>
           </div>
           <div class="record-card__actions">
-            <button class="record-link" @click="openPractice(record.id)">载入</button>
-            <button class="record-link" @click="handleDownload(record.id)">下载</button>
+            <button class="record-link" :disabled="record.status !== 'ready'" @click="openPractice(record.id)">载入</button>
+            <button class="record-link" :disabled="record.status !== 'ready'" @click="handleDownload(record.id)">下载</button>
             <button class="record-link record-link--danger" @click="handleDelete(record.id)">删除</button>
           </div>
         </article>

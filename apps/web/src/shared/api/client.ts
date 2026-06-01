@@ -50,6 +50,11 @@ export const apiClient = {
       (data) => generationTaskSchema.parse(data)
     );
   },
+  async getGeneration(taskId: string): Promise<GenerationTask> {
+    return requestJson(`${API_PATHS.generations}/${taskId}`, { method: "GET" }, (data) =>
+      generationTaskSchema.parse(data)
+    );
+  },
   async getModelStatus(): Promise<ModelInstallStatus> {
     return requestJson(API_PATHS.modelStatus, { method: "GET" }, (data) => modelInstallStatusSchema.parse(data));
   },

@@ -16,10 +16,12 @@ import {
 import { ensureAudioStorage, getAudioStorageDir, saveAudioFile } from "./audio-storage";
 import {
   audioRecords,
+  completeGenerationTask,
   createExercise,
-  createGeneratedAudio,
-  generationTasks,
+  createPendingGeneration,
+  failGenerationTask,
   getAudio,
+  getGenerationTask,
   getPractice,
   importAudio,
   installModel,
@@ -27,9 +29,12 @@ import {
   nextAudioId,
   removeAudio,
   resetModelCache,
+  updateGenerationProgress,
   voices
 } from "./data";
-import { synthesizeSpeech } from "./tts";
+import { splitTextIntoSentences, createSentenceSegments } from "./sentence-segmentation";
+import { synthesizeSpeechSegments } from "./tts";
+import { concatWavFiles } from "./wav";
 
 export function createApp() {
   const app = express();
@@ -46,36 +51,50 @@ export function createApp() {
     response.json(voices);
   });
 
+  async function processGenerationTask(taskId: string, payload: { text: string; voiceId: string }, audioId: string, sentenceTexts: string[]) {
+    try {
+      const audioSegments = await synthesizeSpeechSegments(sentenceTexts, payload.voiceId, (completedSentences) => {
+        updateGenerationProgress(taskId, completedSentences);
+      });
+
+      let audioUrl: string | null = null;
+      let sentenceSegments = createSentenceSegments(sentenceTexts);
+
+      if (audioSegments) {
+        const combinedAudio = concatWavFiles(audioSegments);
+        await ensureAudioStorage();
+        const saved = await saveAudioFile(audioId, combinedAudio.audioBytes, "wav");
+        audioUrl = saved.publicUrl;
+        sentenceSegments = createSentenceSegments(sentenceTexts, combinedAudio.durationsMs);
+      }
+
+      completeGenerationTask(taskId, {
+        audioUrl,
+        sentences: sentenceSegments
+      });
+    } catch (error) {
+      failGenerationTask(taskId, error instanceof Error ? error.message : "TTS generation failed");
+    }
+  }
+
   app.post(API_PATHS.generations, async (request, response) => {
     const payload = createGenerationRequestSchema.parse(request.body);
 
-    try {
-      const createdAt = new Date().toISOString();
-      const audioId = nextAudioId(new Date(createdAt));
-      const audioBytes = await synthesizeSpeech(payload.text, payload.voiceId);
-      let audioUrl: string | null = null;
-
-      if (audioBytes) {
-        await ensureAudioStorage();
-        const saved = await saveAudioFile(audioId, audioBytes, "wav");
-        audioUrl = saved.publicUrl;
-      }
-
-      const createdTask = createGeneratedAudio(payload.text, payload.voiceId, {
+    const createdAt = new Date().toISOString();
+    const audioId = nextAudioId(new Date(createdAt));
+    const sentenceTexts = splitTextIntoSentences(payload.text);
+    const createdTask = createPendingGeneration(payload.text, payload.voiceId, {
         audioId,
-        audioUrl,
-        createdAt
+        createdAt,
+        sentences: createSentenceSegments(sentenceTexts)
       });
-      response.status(201).json(createdTask);
-    } catch (error) {
-      response.status(502).json({
-        message: error instanceof Error ? error.message : "TTS generation failed"
-      });
-    }
+
+    response.status(202).json(createdTask);
+    void processGenerationTask(createdTask.id, payload, audioId, sentenceTexts);
   });
 
   app.get(`${API_PATHS.generations}/:id`, (request, response) => {
-    const task = generationTasks.find((item) => item.id === request.params.id);
+    const task = getGenerationTask(request.params.id);
 
     if (!task) {
       response.status(404).json({ message: "Generation task not found" });

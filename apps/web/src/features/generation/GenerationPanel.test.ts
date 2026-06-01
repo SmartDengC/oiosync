@@ -14,8 +14,8 @@ describe("GenerationPanel", () => {
             initialState: {
               generation: {
                 text: "",
-                voices: [{ id: "heart", label: "女 · heart", gender: "female", accent: "neutral", previewText: "" }],
-                selectedVoiceId: "heart",
+                voices: [{ id: "Mia", label: "Mia", gender: "female", accent: "american", previewText: "" }],
+                selectedVoiceId: "Mia",
                 isSubmitting: false
               },
               app: {

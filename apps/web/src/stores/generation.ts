@@ -6,21 +6,25 @@ import type { GenerationTask, VoiceOption } from "@oio/contracts";
 import { apiClient } from "../shared/api/client";
 
 export const useGenerationStore = defineStore("generation", () => {
-  const text = ref(
-    `I remember being in this situation before where I sent a message to my friend and waited forever for a reply, but he just never responded.
-I was like, "What's going on with you?"
-And the weird part was that I could clearly see the message had already been read, so then my brain started going everywhere.
-I kept wondering whether he was just intentionally ignoring me or if something serious had happened to him.
-The whole thing felt really strange.`
-  );
+  const text = ref("");
   const voices = ref<VoiceOption[]>([]);
-  const selectedVoiceId = ref("heart");
+  const selectedVoiceId = ref("Mia");
   const task = ref<GenerationTask | null>(null);
   const isSubmitting = ref(false);
+  const isPolling = ref(false);
+  let pollTimer: number | null = null;
 
   const sentenceProgressLabel = computed(() => {
     if (!task.value) {
       return "准备开始生成音频与字幕";
+    }
+
+    if (task.value.status === "failed") {
+      return task.value.errorMessage ? `生成失败：${task.value.errorMessage}` : "生成失败，请重试";
+    }
+
+    if (task.value.status === "completed") {
+      return `音频与字幕已生成（${task.value.totalSentences} / ${task.value.totalSentences} 句）`;
     }
 
     return `正在合成语音...（${task.value.completedSentences} / ${task.value.totalSentences} 句）`;
@@ -55,12 +59,78 @@ The whole thing felt really strange.`
     text.value = "";
   }
 
+  function stopPolling() {
+    if (pollTimer != null) {
+      window.clearTimeout(pollTimer);
+      pollTimer = null;
+    }
+    isPolling.value = false;
+  }
+
+  async function pollGeneration(
+    taskId: string,
+    handlers?: {
+      onCompleted?: (nextTask: GenerationTask) => Promise<void> | void;
+      onFailed?: (nextTask: GenerationTask) => Promise<void> | void;
+    }
+  ) {
+    stopPolling();
+    isPolling.value = true;
+
+    const tick = async (): Promise<void> => {
+      try {
+        const nextTask = await apiClient.getGeneration(taskId);
+        task.value = nextTask;
+
+        if (nextTask.status === "completed") {
+          stopPolling();
+          await handlers?.onCompleted?.(nextTask);
+          return;
+        }
+
+        if (nextTask.status === "failed") {
+          stopPolling();
+          await handlers?.onFailed?.(nextTask);
+          return;
+        }
+
+        pollTimer = window.setTimeout(() => {
+          void tick();
+        }, 1000);
+      } catch (error) {
+        const failedTask = {
+          ...(task.value ?? {
+            id: taskId,
+            text: text.value,
+            voiceId: selectedVoiceId.value,
+            progress: 0,
+            totalSentences: 1,
+            completedSentences: 0,
+            audioId: null,
+            audioUrl: null,
+            createdAt: new Date().toISOString()
+          }),
+          status: "failed" as const,
+          errorMessage: error instanceof Error ? error.message : "轮询任务状态失败"
+        };
+        task.value = failedTask;
+        stopPolling();
+        await handlers?.onFailed?.(failedTask);
+      }
+    };
+
+    await tick();
+  }
+
   return {
     clearText,
     isSubmitting,
+    isPolling,
     loadVoices,
+    pollGeneration,
     selectedVoiceId,
     sentenceProgressLabel,
+    stopPolling,
     submitGeneration,
     task,
     text,

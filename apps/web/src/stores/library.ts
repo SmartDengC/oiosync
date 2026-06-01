@@ -6,7 +6,8 @@ import type { AudioRecord, DownloadAudioResponse } from "@oio/contracts";
 import { apiClient } from "../shared/api/client";
 
 function todaySeed() {
-  return { year: 2026, month: 5 };
+  const today = new Date();
+  return { year: today.getFullYear(), month: today.getMonth() + 1 };
 }
 
 export const useLibraryStore = defineStore("library", () => {
@@ -36,18 +37,6 @@ export const useLibraryStore = defineStore("library", () => {
     } finally {
       isLoading.value = false;
     }
-  }
-
-  async function importSample() {
-    const record = await apiClient.importAudio({
-      title: "Imported audio",
-      sourceText:
-        "There was this one time when I sent a message and had to wait longer than I expected for a response."
-    });
-    year.value = record.year;
-    month.value = record.month;
-    selectedDay.value = record.day;
-    await loadCurrentMonth();
   }
 
   async function deleteRecord(audioId: string) {
@@ -89,7 +78,6 @@ export const useLibraryStore = defineStore("library", () => {
     downloadRecord,
     filteredRecords,
     highlightedDays,
-    importSample,
     isLoading,
     lastDownload,
     loadCurrentMonth,

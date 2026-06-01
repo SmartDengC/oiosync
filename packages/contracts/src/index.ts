@@ -28,12 +28,13 @@ export const generationTaskSchema = z.object({
   id: z.string(),
   text: z.string(),
   voiceId: z.string(),
-  status: z.enum(["pending", "processing", "completed"]),
+  status: z.enum(["pending", "processing", "completed", "failed"]),
   progress: z.number().min(0).max(1),
   totalSentences: z.number().int().positive(),
   completedSentences: z.number().int().nonnegative(),
   audioId: z.string().nullable(),
   audioUrl: z.string().nullable().optional(),
+  errorMessage: z.string().optional(),
   createdAt: z.string()
 });
 

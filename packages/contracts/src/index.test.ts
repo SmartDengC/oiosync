@@ -14,20 +14,20 @@ describe("contracts", () => {
   it("parses voice options and generation payloads", () => {
     expect(
       voiceOptionSchema.parse({
-        id: "heart",
-        label: "女 · heart",
+        id: "Mia",
+        label: "Mia",
         gender: "female",
-        accent: "neutral",
+        accent: "american",
         previewText: "Preview"
       }).id
-    ).toBe("heart");
+    ).toBe("Mia");
 
     expect(
       createGenerationRequestSchema.parse({
         text: "Hello world.",
-        voiceId: "heart"
+        voiceId: "Mia"
       }).voiceId
-    ).toBe("heart");
+    ).toBe("Mia");
   });
 
   it("keeps audio and practice payloads aligned", () => {
@@ -36,7 +36,7 @@ describe("contracts", () => {
       title: "2026-05-28-001",
       sourceText: "I remember being in this situation before.",
       summary: "I remember being in this situation before.",
-      voiceId: "heart",
+      voiceId: "Mia",
       audioUrl: "/generated-audio/2026-05-28-001.mp3",
       year: 2026,
       month: 5,
@@ -60,7 +60,7 @@ describe("contracts", () => {
     expect(generationTaskSchema.parse({
       id: "task-1",
       text: record.sourceText,
-      voiceId: "heart",
+      voiceId: "Mia",
       status: "completed",
       progress: 1,
       totalSentences: 1,
@@ -69,6 +69,22 @@ describe("contracts", () => {
       audioUrl: record.audioUrl,
       createdAt: record.createdAt
     }).audioId).toBe(record.id);
+
+    expect(
+      generationTaskSchema.parse({
+        id: "task-2",
+        text: record.sourceText,
+        voiceId: "Mia",
+        status: "failed",
+        progress: 0.5,
+        totalSentences: 2,
+        completedSentences: 1,
+        audioId: record.id,
+        audioUrl: null,
+        errorMessage: "provider timeout",
+        createdAt: record.createdAt
+      }).status
+    ).toBe("failed");
 
     expect(audioListResponseSchema.parse({
       year: 2026,

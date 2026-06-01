@@ -18,9 +18,21 @@ async function handleGenerate() {
   const createdAt = new Date(task.createdAt);
   libraryStore.year = createdAt.getUTCFullYear();
   libraryStore.month = createdAt.getUTCMonth() + 1;
-  appStore.setCurrentAudio(task.audioId);
-  appStore.pushNotice("音频与字幕已生成，可在下方音频库中继续练习。");
   await libraryStore.loadCurrentMonth();
+  appStore.setCurrentAudio(null);
+  appStore.pushNotice("已加入生成队列，正在后台生成音频与字幕。");
+  await generationStore.pollGeneration(task.id, {
+    onCompleted: async (completedTask) => {
+      appStore.setCurrentAudio(completedTask.audioId);
+      appStore.pushNotice("音频与字幕已生成，可在下方音频库中继续练习。");
+      await libraryStore.loadCurrentMonth();
+    },
+    onFailed: async (failedTask) => {
+      appStore.setCurrentAudio(null);
+      appStore.pushNotice(failedTask.errorMessage ? `生成失败：${failedTask.errorMessage}` : "生成失败，请重试。");
+      await libraryStore.loadCurrentMonth();
+    }
+  });
 }
 </script>
 
@@ -45,10 +57,10 @@ async function handleGenerate() {
           <button
             class="button button--primary"
             data-testid="generate-button"
-            :disabled="generationStore.isSubmitting || !generationStore.text.trim()"
+            :disabled="generationStore.isSubmitting || generationStore.isPolling || !generationStore.text.trim()"
             @click="handleGenerate"
           >
-            {{ generationStore.isSubmitting ? "生成中..." : "生成音频与字幕" }}
+            {{ generationStore.isSubmitting || generationStore.isPolling ? "生成中..." : "生成音频与字幕" }}
           </button>
           <button class="button button--ghost" type="button" @click="generationStore.clearText()">清空</button>
         </div>

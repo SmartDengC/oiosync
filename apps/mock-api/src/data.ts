@@ -7,40 +7,11 @@ import type {
   VoiceOption
 } from "@oio/contracts";
 
-const seedText = `I remember being in this situation before where I sent a message to my friend and waited forever for a reply, but he just never responded.
-I was like, "What's going on with you?"
-And the weird part was that I could clearly see the message had already been read, so then my brain started going everywhere.
-I kept wondering whether he was just intentionally ignoring me or if something serious had happened to him.
-The whole thing felt really strange.`;
+import { loadPersistedState, persistState } from "./record-storage";
+import { createSentenceSegments, splitTextIntoSentences } from "./sentence-segmentation";
 
 function chunkSentences(text: string): SentenceSegment[] {
-  const rawSentences = text
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean);
-
-  let startMs = 0;
-
-  return rawSentences.map((sentence, index) => {
-    const duration = Math.max(4200, sentence.length * 55);
-    const words = sentence
-      .replace(/[^a-zA-Z\s']/g, "")
-      .split(/\s+/)
-      .filter((word) => word.length >= 5)
-      .slice(0, 3);
-
-    const segment = {
-      id: `sentence-${index + 1}`,
-      index,
-      text: sentence,
-      startMs,
-      endMs: startMs + duration,
-      focusWords: words
-    };
-
-    startMs += duration;
-    return segment;
-  });
+  return createSentenceSegments(splitTextIntoSentences(text));
 }
 
 export function summarize(text: string): string {
@@ -52,10 +23,11 @@ function buildRecord(
   createdAt: string,
   text: string,
   voiceId: string,
-  audioUrl: string | null = null
+  audioUrl: string | null = null,
+  sentences = chunkSentences(text),
+  status: AudioRecord["status"] = "ready"
 ): AudioRecord {
   const date = new Date(createdAt);
-  const sentences = chunkSentences(text);
   const durationSeconds = Math.round(
     sentences.reduce((total, item) => total + (item.endMs - item.startMs), 0) / 1000
   );
@@ -72,9 +44,39 @@ function buildRecord(
     day: date.getUTCDate(),
     dateKey: createdAt.slice(0, 10),
     durationSeconds,
-    status: "ready",
+    status,
     createdAt,
     sentences
+  };
+}
+
+function buildTask(
+  id: string,
+  text: string,
+  voiceId: string,
+  createdAt: string,
+  audioId: string,
+  totalSentences: number,
+  options?: {
+    status?: GenerationTask["status"];
+    progress?: number;
+    completedSentences?: number;
+    audioUrl?: string | null;
+    errorMessage?: string;
+  }
+): GenerationTask {
+  return {
+    id,
+    text,
+    voiceId,
+    status: options?.status ?? "processing",
+    progress: options?.progress ?? 0,
+    totalSentences,
+    completedSentences: options?.completedSentences ?? 0,
+    audioId,
+    audioUrl: options?.audioUrl ?? null,
+    errorMessage: options?.errorMessage,
+    createdAt
   };
 }
 
@@ -98,25 +100,32 @@ function buildRecommendedExercise(audio: AudioRecord): BlankExercise {
 
 export const voices: VoiceOption[] = [
   {
-    id: "heart",
-    label: "女 · heart",
+    id: "Mia",
+    label: "Mia",
     gender: "female",
-    accent: "neutral",
-    previewText: "Warm and reflective delivery"
+    accent: "american",
+    previewText: "Warm and natural English narration"
   },
   {
-    id: "brook",
-    label: "男 · brook",
+    id: "Chloe",
+    label: "Chloe",
+    gender: "female",
+    accent: "american",
+    previewText: "Bright and expressive English voice"
+  },
+  {
+    id: "Milo",
+    label: "Milo",
     gender: "male",
     accent: "american",
-    previewText: "Steady narration for practice"
+    previewText: "Steady English practice narration"
   },
   {
-    id: "halo",
-    label: "中性 · halo",
-    gender: "neutral",
+    id: "Dean",
+    label: "Dean",
+    gender: "male",
     accent: "british",
-    previewText: "Balanced tone for subtitle study"
+    previewText: "Clear and balanced English delivery"
   }
 ];
 
@@ -132,30 +141,18 @@ export let modelStatus: ModelInstallStatus = {
   ]
 };
 
-const seededDates = [
-  "2026-05-28T09:00:00.000Z",
-  "2026-05-28T09:10:00.000Z",
-  "2026-05-28T09:20:00.000Z",
-  "2026-05-28T09:30:00.000Z",
-  "2026-05-29T09:15:00.000Z",
-  "2026-05-30T09:25:00.000Z"
-];
+const persistedState = loadPersistedState();
 
-export let audioRecords: AudioRecord[] = seededDates.map((createdAt, index) =>
-  buildRecord(`2026-05-28-00${index + 1}`, createdAt, seedText, index % 2 === 0 ? "heart" : "brook")
-);
+export let audioRecords: AudioRecord[] = persistedState.audioRecords;
 
-export let generationTasks: GenerationTask[] = audioRecords.map((record, index) => ({
-  id: `task-seed-${index + 1}`,
-  text: record.sourceText,
-  voiceId: record.voiceId,
-  status: "completed",
-  progress: 1,
-  totalSentences: record.sentences.length,
-  completedSentences: record.sentences.length,
-  audioId: record.id,
-  createdAt: record.createdAt
-}));
+export let generationTasks: GenerationTask[] = persistedState.generationTasks;
+
+function saveRuntimeState() {
+  persistState({
+    audioRecords,
+    generationTasks
+  });
+}
 
 export function nextAudioId(date = new Date()): string {
   const dateKey = date.toISOString().slice(0, 10);
@@ -170,35 +167,71 @@ export function createGeneratedAudio(
     audioId?: string;
     audioUrl?: string | null;
     createdAt?: string;
+    sentences?: SentenceSegment[];
   }
 ): GenerationTask {
   const createdAt = options?.createdAt ?? new Date().toISOString();
   const audioId = options?.audioId ?? nextAudioId(new Date(createdAt));
   const audioUrl = options?.audioUrl ?? null;
-  const record = buildRecord(audioId, createdAt, text, voiceId, audioUrl);
-
-  const task: GenerationTask = {
-    id: `task-${Date.now()}`,
+  const record = buildRecord(audioId, createdAt, text, voiceId, audioUrl, options?.sentences ?? chunkSentences(text));
+  const task = buildTask(
+    `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     text,
     voiceId,
-    status: "completed",
-    progress: 1,
-    totalSentences: record.sentences.length,
-    completedSentences: record.sentences.length,
-    audioId: record.id,
-    audioUrl: record.audioUrl,
-    createdAt
-  };
+    createdAt,
+    record.id,
+    record.sentences.length,
+    {
+      status: "completed",
+      progress: 1,
+      completedSentences: record.sentences.length,
+      audioUrl: record.audioUrl
+    }
+  );
 
   audioRecords = [record, ...audioRecords];
   generationTasks = [task, ...generationTasks];
+  saveRuntimeState();
+  return task;
+}
+
+export function createPendingGeneration(
+  text: string,
+  voiceId: string,
+  options?: {
+    audioId?: string;
+    createdAt?: string;
+    sentences?: SentenceSegment[];
+  }
+): GenerationTask {
+  const createdAt = options?.createdAt ?? new Date().toISOString();
+  const audioId = options?.audioId ?? nextAudioId(new Date(createdAt));
+  const sentences = options?.sentences ?? chunkSentences(text);
+  const record = buildRecord(audioId, createdAt, text, voiceId, null, sentences, "processing");
+  const task = buildTask(
+    `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    text,
+    voiceId,
+    createdAt,
+    audioId,
+    sentences.length,
+    {
+      status: "processing",
+      progress: 0,
+      completedSentences: 0
+    }
+  );
+
+  audioRecords = [record, ...audioRecords];
+  generationTasks = [task, ...generationTasks];
+  saveRuntimeState();
   return task;
 }
 
 export function importAudio(title: string, sourceText: string): AudioRecord {
   const createdAt = new Date().toISOString();
   const id = nextAudioId(new Date(createdAt));
-  const record = buildRecord(title ? `${id}` : id, createdAt, sourceText, "halo", null);
+  const record = buildRecord(title ? `${id}` : id, createdAt, sourceText, "Mia", null);
 
   audioRecords = [
     {
@@ -207,6 +240,7 @@ export function importAudio(title: string, sourceText: string): AudioRecord {
     },
     ...audioRecords
   ];
+  saveRuntimeState();
 
   return audioRecords[0];
 }
@@ -215,10 +249,86 @@ export function getAudio(audioId: string): AudioRecord | undefined {
   return audioRecords.find((record) => record.id === audioId);
 }
 
+export function getGenerationTask(taskId: string): GenerationTask | undefined {
+  return generationTasks.find((task) => task.id === taskId);
+}
+
+export function updateGenerationProgress(taskId: string, completedSentences: number) {
+  const task = getGenerationTask(taskId);
+
+  if (!task || task.status === "failed" || task.status === "completed") {
+    return;
+  }
+
+  const safeCompletedSentences = Math.min(task.totalSentences, Math.max(0, completedSentences));
+  Object.assign(task, {
+    status: "processing",
+    completedSentences: safeCompletedSentences,
+    progress: safeCompletedSentences / task.totalSentences
+  });
+  saveRuntimeState();
+}
+
+export function completeGenerationTask(
+  taskId: string,
+  options: {
+    audioUrl: string | null;
+    sentences: SentenceSegment[];
+  }
+) {
+  const task = getGenerationTask(taskId);
+
+  if (!task) {
+    return;
+  }
+
+  Object.assign(task, {
+    status: "completed",
+    progress: 1,
+    completedSentences: task.totalSentences,
+    audioUrl: options.audioUrl,
+    errorMessage: undefined
+  });
+
+  const record = task.audioId ? getAudio(task.audioId) : undefined;
+  if (record) {
+    const durationSeconds = Math.round(
+      options.sentences.reduce((total, item) => total + (item.endMs - item.startMs), 0) / 1000
+    );
+    Object.assign(record, {
+      audioUrl: options.audioUrl,
+      sentences: options.sentences,
+      durationSeconds,
+      status: "ready"
+    });
+  }
+
+  saveRuntimeState();
+}
+
+export function failGenerationTask(taskId: string, errorMessage: string) {
+  const task = getGenerationTask(taskId);
+
+  if (!task) {
+    return;
+  }
+
+  Object.assign(task, {
+    status: "failed",
+    errorMessage
+  });
+
+  if (task.audioId) {
+    audioRecords = audioRecords.filter((record) => record.id !== task.audioId);
+  }
+
+  saveRuntimeState();
+}
+
 export function getPractice(audioId: string) {
   const audio = getAudio(audioId);
 
-  if (!audio) {
+  if (!audio || audio.status !== "ready") {
     return undefined;
   }
 
@@ -249,7 +359,19 @@ export function removeAudio(audioId: string): boolean {
   const before = audioRecords.length;
   audioRecords = audioRecords.filter((record) => record.id !== audioId);
   generationTasks = generationTasks.filter((task) => task.audioId !== audioId);
-  return audioRecords.length < before;
+  const removed = audioRecords.length < before;
+
+  if (removed) {
+    saveRuntimeState();
+  }
+
+  return removed;
+}
+
+export function resetRuntimeData() {
+  audioRecords = [];
+  generationTasks = [];
+  saveRuntimeState();
 }
 
 export function resetModelCache() {
