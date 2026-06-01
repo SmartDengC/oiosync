@@ -47,7 +47,13 @@ export function summarize(text: string): string {
   return text.length > 78 ? `${text.slice(0, 75)}...` : text;
 }
 
-function buildRecord(id: string, createdAt: string, text: string, voiceId: string): AudioRecord {
+function buildRecord(
+  id: string,
+  createdAt: string,
+  text: string,
+  voiceId: string,
+  audioUrl: string | null = null
+): AudioRecord {
   const date = new Date(createdAt);
   const sentences = chunkSentences(text);
   const durationSeconds = Math.round(
@@ -60,6 +66,7 @@ function buildRecord(id: string, createdAt: string, text: string, voiceId: strin
     sourceText: text,
     summary: summarize(text),
     voiceId,
+    audioUrl,
     year: date.getUTCFullYear(),
     month: date.getUTCMonth() + 1,
     day: date.getUTCDate(),
@@ -156,10 +163,19 @@ export function nextAudioId(date = new Date()): string {
   return `${dateKey}-${String(countForDate).padStart(3, "0")}`;
 }
 
-export function createGeneratedAudio(text: string, voiceId: string): GenerationTask {
-  const createdAt = new Date().toISOString();
-  const id = nextAudioId(new Date(createdAt));
-  const record = buildRecord(id, createdAt, text, voiceId);
+export function createGeneratedAudio(
+  text: string,
+  voiceId: string,
+  options?: {
+    audioId?: string;
+    audioUrl?: string | null;
+    createdAt?: string;
+  }
+): GenerationTask {
+  const createdAt = options?.createdAt ?? new Date().toISOString();
+  const audioId = options?.audioId ?? nextAudioId(new Date(createdAt));
+  const audioUrl = options?.audioUrl ?? null;
+  const record = buildRecord(audioId, createdAt, text, voiceId, audioUrl);
 
   const task: GenerationTask = {
     id: `task-${Date.now()}`,
@@ -170,6 +186,7 @@ export function createGeneratedAudio(text: string, voiceId: string): GenerationT
     totalSentences: record.sentences.length,
     completedSentences: record.sentences.length,
     audioId: record.id,
+    audioUrl: record.audioUrl,
     createdAt
   };
 
@@ -181,7 +198,7 @@ export function createGeneratedAudio(text: string, voiceId: string): GenerationT
 export function importAudio(title: string, sourceText: string): AudioRecord {
   const createdAt = new Date().toISOString();
   const id = nextAudioId(new Date(createdAt));
-  const record = buildRecord(title ? `${id}` : id, createdAt, sourceText, "halo");
+  const record = buildRecord(title ? `${id}` : id, createdAt, sourceText, "halo", null);
 
   audioRecords = [
     {

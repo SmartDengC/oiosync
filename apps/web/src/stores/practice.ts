@@ -102,6 +102,23 @@ export const usePracticeStore = defineStore("practice", () => {
     currentSeconds.value = nextValue;
   }
 
+  function syncCurrentSentenceBySeconds(nextValue: number) {
+    if (!payload.value) {
+      return;
+    }
+
+    const sentenceIndex = payload.value.audio.sentences.findIndex((sentence, index, sentences) => {
+      const startSeconds = sentence.startMs / 1000;
+      const nextSentence = sentences[index + 1];
+      const endSeconds = nextSentence ? nextSentence.startMs / 1000 : payload.value?.audio.durationSeconds ?? Infinity;
+      return nextValue >= startSeconds && nextValue < endSeconds;
+    });
+
+    if (sentenceIndex >= 0) {
+      currentSentenceIndex.value = sentenceIndex;
+    }
+  }
+
   return {
     activeSentence,
     answers,
@@ -124,6 +141,7 @@ export const usePracticeStore = defineStore("practice", () => {
     setMode,
     setSpeed,
     speed,
+    syncCurrentSentenceBySeconds,
     togglePlay,
     totalDuration,
     updateAnswer

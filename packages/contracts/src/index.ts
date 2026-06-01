@@ -33,6 +33,7 @@ export const generationTaskSchema = z.object({
   totalSentences: z.number().int().positive(),
   completedSentences: z.number().int().nonnegative(),
   audioId: z.string().nullable(),
+  audioUrl: z.string().nullable().optional(),
   createdAt: z.string()
 });
 
@@ -42,6 +43,7 @@ export const audioRecordSchema = z.object({
   sourceText: z.string(),
   summary: z.string(),
   voiceId: z.string(),
+  audioUrl: z.string().nullable(),
   year: z.number().int(),
   month: z.number().int().min(1).max(12),
   day: z.number().int().min(1).max(31),

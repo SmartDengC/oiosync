@@ -1,5 +1,7 @@
 import cors from "cors";
 import express from "express";
+import path from "node:path";
+import { extname } from "node:path";
 
 import {
   API_PATHS,
@@ -11,6 +13,7 @@ import {
   practiceCheckResultSchema
 } from "@oio/contracts";
 
+import { ensureAudioStorage, getAudioStorageDir, saveAudioFile } from "./audio-storage";
 import {
   audioRecords,
   createExercise,
@@ -21,16 +24,19 @@ import {
   importAudio,
   installModel,
   modelStatus,
+  nextAudioId,
   removeAudio,
   resetModelCache,
   voices
 } from "./data";
+import { synthesizeSpeech } from "./tts";
 
 export function createApp() {
   const app = express();
 
   app.use(cors());
   app.use(express.json());
+  app.use("/generated-audio", express.static(path.resolve(getAudioStorageDir())));
 
   app.get("/health", (_request, response) => {
     response.json({ ok: true });
@@ -40,9 +46,32 @@ export function createApp() {
     response.json(voices);
   });
 
-  app.post(API_PATHS.generations, (request, response) => {
+  app.post(API_PATHS.generations, async (request, response) => {
     const payload = createGenerationRequestSchema.parse(request.body);
-    response.status(201).json(createGeneratedAudio(payload.text, payload.voiceId));
+
+    try {
+      const createdAt = new Date().toISOString();
+      const audioId = nextAudioId(new Date(createdAt));
+      const audioBytes = await synthesizeSpeech(payload.text, payload.voiceId);
+      let audioUrl: string | null = null;
+
+      if (audioBytes) {
+        await ensureAudioStorage();
+        const saved = await saveAudioFile(audioId, audioBytes, "wav");
+        audioUrl = saved.publicUrl;
+      }
+
+      const createdTask = createGeneratedAudio(payload.text, payload.voiceId, {
+        audioId,
+        audioUrl,
+        createdAt
+      });
+      response.status(201).json(createdTask);
+    } catch (error) {
+      response.status(502).json({
+        message: error instanceof Error ? error.message : "TTS generation failed"
+      });
+    }
   });
 
   app.get(`${API_PATHS.generations}/:id`, (request, response) => {
@@ -119,8 +148,8 @@ export function createApp() {
 
     response.json(
       downloadAudioResponseSchema.parse({
-        filename: `${record.id}.mp3`,
-        url: `/mock-downloads/${record.id}.mp3`
+        filename: `${record.id}${record.audioUrl ? extname(record.audioUrl) || ".wav" : ".mp3"}`,
+        url: record.audioUrl ?? `/mock-downloads/${record.id}.mp3`
       })
     );
   });

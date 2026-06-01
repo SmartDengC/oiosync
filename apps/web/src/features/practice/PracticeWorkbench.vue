@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { SentenceSegment } from "@oio/contracts";
 
 import PanelCard from "../../shared/ui/PanelCard.vue";
 import { usePracticeStore } from "../../stores/practice";
 
 const practiceStore = usePracticeStore();
+const audioRef = ref<HTMLAudioElement | null>(null);
+const audioError = ref("");
 
 let timer: number | undefined;
 
@@ -23,6 +25,8 @@ const playbackProgress = computed(() => {
 
   return practiceStore.currentSeconds / practiceStore.totalDuration;
 });
+
+const hasRealAudio = computed(() => Boolean(practiceStore.payload?.audio.audioUrl));
 
 const fillRows = computed(() => {
   if (!practiceStore.payload || !practiceStore.blankExercise) {
@@ -69,12 +73,14 @@ function stepPlayback() {
 
   if (practiceStore.sentenceLoop && nextSeconds >= sentenceEnd) {
     practiceStore.setCurrentSeconds(sentenceStart);
+    practiceStore.syncCurrentSentenceBySeconds(sentenceStart);
     return;
   }
 
   if (nextSeconds >= practiceStore.totalDuration) {
     if (practiceStore.audioLoop) {
       practiceStore.setCurrentSeconds(0);
+      practiceStore.syncCurrentSentenceBySeconds(0);
       return;
     }
 
@@ -86,12 +92,116 @@ function stepPlayback() {
   }
 
   practiceStore.setCurrentSeconds(nextSeconds);
+  practiceStore.syncCurrentSentenceBySeconds(nextSeconds);
+}
+
+function syncAudioTime(nextSeconds: number) {
+  const audio = audioRef.value;
+
+  if (audio) {
+    audio.currentTime = nextSeconds;
+  }
+}
+
+async function handlePlayToggle() {
+  const audio = audioRef.value;
+
+  if (hasRealAudio.value && audio) {
+    audioError.value = "";
+
+    if (practiceStore.isPlaying) {
+      audio.pause();
+      practiceStore.togglePlay();
+      return;
+    }
+
+    audio.playbackRate = practiceStore.speed;
+
+    try {
+      await audio.play();
+      if (!practiceStore.isPlaying) {
+        practiceStore.togglePlay();
+      }
+    } catch (error) {
+      audioError.value = "音频资源加载失败，请先确认后端服务已启动且音频文件可访问。";
+      console.error("Audio playback failed", error);
+    }
+
+    return;
+  }
+
+  practiceStore.togglePlay();
+}
+
+function handleTimelineInput(event: Event) {
+  const nextSeconds = Number((event.target as HTMLInputElement).value);
+  practiceStore.setCurrentSeconds(nextSeconds);
+  practiceStore.syncCurrentSentenceBySeconds(nextSeconds);
+  syncAudioTime(nextSeconds);
+}
+
+function handlePreviousSentence() {
+  practiceStore.previousSentence();
+  syncAudioTime(practiceStore.currentSeconds);
+}
+
+function handleNextSentence() {
+  practiceStore.nextSentence();
+  syncAudioTime(practiceStore.currentSeconds);
+}
+
+function handleAudioTimeUpdate() {
+  const audio = audioRef.value;
+
+  if (!audio) {
+    return;
+  }
+
+  const nextSeconds = audio.currentTime;
+  const sentenceEnd = practiceStore.activeSentence ? practiceStore.activeSentence.endMs / 1000 : Infinity;
+  const sentenceStart = practiceStore.activeSentence ? practiceStore.activeSentence.startMs / 1000 : 0;
+
+  if (practiceStore.sentenceLoop && nextSeconds >= sentenceEnd) {
+    audio.currentTime = sentenceStart;
+    practiceStore.setCurrentSeconds(sentenceStart);
+    practiceStore.syncCurrentSentenceBySeconds(sentenceStart);
+    return;
+  }
+
+  practiceStore.setCurrentSeconds(nextSeconds);
+  practiceStore.syncCurrentSentenceBySeconds(nextSeconds);
+}
+
+function handleAudioEnded() {
+  const audio = audioRef.value;
+
+  if (practiceStore.audioLoop && audio) {
+    audio.currentTime = 0;
+    void audio.play();
+    return;
+  }
+
+  practiceStore.setCurrentSeconds(practiceStore.totalDuration);
+  if (practiceStore.isPlaying) {
+    practiceStore.togglePlay();
+  }
+}
+
+function handleAudioError() {
+  audioError.value = "音频资源加载失败，请先确认后端服务已启动且音频文件可访问。";
+  if (practiceStore.isPlaying) {
+    practiceStore.togglePlay();
+  }
 }
 
 watch(
   () => practiceStore.isPlaying,
   (isPlaying) => {
     window.clearInterval(timer);
+
+    if (hasRealAudio.value) {
+      return;
+    }
 
     if (!isPlaying) {
       timer = undefined;
@@ -102,16 +212,46 @@ watch(
   }
 );
 
+watch(
+  () => practiceStore.speed,
+  (speed) => {
+    if (audioRef.value) {
+      audioRef.value.playbackRate = speed;
+    }
+  }
+);
+
+watch(
+  () => practiceStore.payload?.audio.id,
+  () => {
+    audioError.value = "";
+    if (audioRef.value) {
+      audioRef.value.pause();
+      audioRef.value.currentTime = 0;
+    }
+  }
+);
+
 onBeforeUnmount(() => {
   window.clearInterval(timer);
+  audioRef.value?.pause();
 });
 </script>
 
 <template>
   <PanelCard v-if="practiceStore.payload" title="练习" caption="字幕、听写、填空练习统一在同一个练习工作台中切换。">
     <div class="practice-panel">
+      <audio
+        v-if="practiceStore.payload.audio.audioUrl"
+        ref="audioRef"
+        :src="practiceStore.payload.audio.audioUrl"
+        preload="metadata"
+        @ended="handleAudioEnded"
+        @error="handleAudioError"
+        @timeupdate="handleAudioTimeUpdate"
+      />
       <div class="practice-player">
-        <button class="play-button" @click="practiceStore.togglePlay()">
+        <button class="play-button" @click="handlePlayToggle">
           {{ practiceStore.isPlaying ? "❚❚" : "▶" }}
         </button>
         <div class="practice-player__timeline">
@@ -123,7 +263,7 @@ onBeforeUnmount(() => {
             min="0"
             :max="practiceStore.totalDuration"
             step="0.5"
-            @input="practiceStore.setCurrentSeconds(Number(($event.target as HTMLInputElement).value))"
+            @input="handleTimelineInput"
           />
         </div>
         <select :value="practiceStore.speed" @change="practiceStore.setSpeed(Number(($event.target as HTMLSelectElement).value))">
@@ -147,9 +287,10 @@ onBeforeUnmount(() => {
             @change="practiceStore.setLoops(practiceStore.sentenceLoop, ($event.target as HTMLInputElement).checked)"
           />
         </label>
-        <button class="button button--ghost" @click="practiceStore.previousSentence()">上一句</button>
-        <button class="button button--ghost" @click="practiceStore.nextSentence()">下一句</button>
+        <button class="button button--ghost" @click="handlePreviousSentence">上一句</button>
+        <button class="button button--ghost" @click="handleNextSentence">下一句</button>
       </div>
+      <p v-if="audioError" class="fill-blanks-result">{{ audioError }}</p>
 
       <div class="practice-modes">
         <span class="practice-modes__label">模式</span>

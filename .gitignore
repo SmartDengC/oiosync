@@ -3,3 +3,7 @@ dist
 .DS_Store
 coverage
 .pnpm-store
+.env
+.env.local
+generated-audio
+apps/mock-api/generated-audio

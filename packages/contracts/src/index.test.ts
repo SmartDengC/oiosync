@@ -37,6 +37,7 @@ describe("contracts", () => {
       sourceText: "I remember being in this situation before.",
       summary: "I remember being in this situation before.",
       voiceId: "heart",
+      audioUrl: "/generated-audio/2026-05-28-001.mp3",
       year: 2026,
       month: 5,
       day: 28,
@@ -65,6 +66,7 @@ describe("contracts", () => {
       totalSentences: 1,
       completedSentences: 1,
       audioId: record.id,
+      audioUrl: record.audioUrl,
       createdAt: record.createdAt
     }).audioId).toBe(record.id);
 

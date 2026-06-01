@@ -12,6 +12,7 @@ const payload = {
     sourceText: "I remember being in this situation before.",
     summary: "I remember being in this situation before.",
     voiceId: "heart",
+    audioUrl: null,
     year: 2026,
     month: 5,
     day: 28,
